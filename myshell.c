@@ -10,80 +10,99 @@
   open("./p4.output", O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
   */
 
-
-  size_t byteSize = 512;
-int number_of_args =0;
-static char* args[512];
+size_t byteSize = 512;
+int number_of_args = 0;
+static char* args[byteSize];
 char error_message[30] = "An error has occurred\n";
- char delimit[]=" \t\r\n\v\f" ;
-/* make sure to consider specail characters inbetween strings ">" "&" */
+char delimit[]=" \t\r\n\v\f" ;
+
+
+
 void line_to_arguments(char * line, char ** toks ){
 
-    char * p = strtok(line, delimit);//USE better DELIMITER
+    char * p = strtok(line, delimit);
+
     char * p_copy = p;
     int i = 0;
     //allocate some memory for each token array element
     toks[i] = malloc(512 * sizeof(char));
-    char c;
-    //flag of whether p has a special character in it or not 0 for false 1 for true
-    int no_special_char;
+    printf("p is %s  tok[i] is %s\n",p,toks[i]);
+   
+    //flag of whether p has a special character in it or not 0 for no special char, 1 otherwise
+    int no_special_char=1;
 
     while(p_copy){
+
         //loop through the string and store each token separately
       while(strlen(p_copy)!=0 ) {
         //if a special char is found, store it separetely as it is a token on its own.Also add terminating '\0'
         if(p_copy[0]=='&' || p_copy[0]=='>'){
-
           no_special_char = 0;
-          c = p_copy[0];
           //if special character is the first characer of the new argument token,
           //concat the special character to toks[i] and prepare the next toks[i+1]
           if(strlen(toks[i])==0){
-            strncat(toks[i],&c,1);
-            strcat(toks[i++], "\0");
-            toks[i] = malloc(512 * sizeof(char));
+            //check whether the token has two consecutive ampsersand or a single ampersand and lex them accordingly
+            if(p_copy[0]=='&' && p_copy[1]=='&'){
+            strcpy(toks[i],"&&");
+            p_copy++;//pointer is being moved 2 places(increment once here and once at the end)
+            }
+            else{
+            strncat(toks[i],&p_copy[0],1);//concat just one special char
+            }
+
+            strncat(toks[i], "",1);//add null terminator 
+            toks[++i] = malloc(512 * sizeof(char));
           }
+          //p_copy[0] is a special char but it's not the first char in the string
           else{
-            strcat(toks[i++], "\0");
+            strcat(toks[i++], "");
             toks[i] = malloc(512 * sizeof(char));
-            strncat(toks[i],&c,1);
-            strcat(toks[i++], "\0");
+            //check whether the token has two consecutive ampsersand  or a single ampersand and lex them accordingly
+            if(p_copy[0]=='&' && p_copy[1]=='&'){
+            strcat(toks[i],"&&");
+             p_copy++;//pointer is being moved 2 places(increment once here and once at the end)
+
+            }
+            else{
+            strncat(toks[i],&p_copy[0],1);
+            }
+            strncat(toks[i++], "",1);
             toks[i] = malloc(512 * sizeof(char));
           }
           p_copy++;//pointer p points to the next char in the string
         }
-        //do not add  line return '\n' and just increment p
-        else if(p_copy[0] =='\n'){
-          p_copy++;
-        }
+
         //if it's just a normal char, add it
         else {
           no_special_char= 1;
-          c = p_copy[0];
-          strncat(toks[i], &c,1);
+          //c = p_copy[0];
+                  printf("111111\n");
+
+          strncat(toks[i], &p_copy[0],1);
           p_copy++;
         }
        }
 
       //if the last char processed was not a special char, add '\0'
       if(no_special_char==1){
-        strcat(toks[i++], "\0");
+        strcat(toks[i++], "");
       }
+                  printf("22222\n");
 
       p = strtok(NULL, delimit);
       p_copy = p;
       if(p){
+            printf("33333\n");
+
         toks[i] = malloc(512 * sizeof(char));
       }
     }
-    //if the very last char process was a special character, tok[i] is empty
-    if(no_special_char == 0) {
+    free( toks[i]);
 
-       toks[i] = NULL;
-    }
-    else {
-       toks[++i] = NULL;
-    }
+    toks[i] = NULL;
+
+
+
 }
 
 int process_command(){
@@ -181,25 +200,29 @@ int main(int argc, char *argv[]) {
     if(result){
       line_to_arguments(buffer, tokens);
       int i = 0 ;
+
+
+   printf(" arg0 = %s\n", tokens[0]);
+      printf(" arg1 = %s\n", tokens[1]);
+      printf("arg2 = %s\n", tokens[2]);
+      printf("argc= %d\n",number_of_args);
+      
+
       while(tokens[i] != NULL){
         args[i] = tokens[i];
-                  number_of_args++;
-
+        number_of_args++;
         printf("I am a token: %s with length: %lu\n", tokens[i], strlen(tokens[i++]));
       }
 
-      int v = execute();
+    if (number_of_args>0) execute();
+
+
 
     }
     else{
        write(STDERR_FILENO, error_message, strlen(error_message));
     }
-  /*
-   printf(" arg0 = %s\n", args[0]);
-      printf(" arg1 = %s\n", args[1]);
-      printf("arg2 = %s\n", args[2]);
-      printf("argc= %d\n",number_of_args);
-      */
+
     int z=0;
     while(number_of_args!=0){
       free(tokens[number_of_args-1]);
