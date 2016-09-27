@@ -10,12 +10,13 @@
   open("./p4.output", O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
   */
 
+int outputfile;
+char *outputfile_name;
 size_t byteSize = 512;
 int number_of_args = 0;
-static char* args[byteSize];
+static char* args[512];
 char error_message[30] = "An error has occurred\n";
 char delimit[]=" \t\r\n\v\f" ;
-
 
 
 void line_to_arguments(char * line, char ** toks ){
@@ -75,9 +76,6 @@ void line_to_arguments(char * line, char ** toks ){
         //if it's just a normal char, add it
         else {
           no_special_char= 1;
-          //c = p_copy[0];
-                  printf("111111\n");
-
           strncat(toks[i], &p_copy[0],1);
           p_copy++;
         }
@@ -105,12 +103,11 @@ void line_to_arguments(char * line, char ** toks ){
 
 }
 
-int process_command(){
+int process_command(char *f){
   /* setting up pipeline process with file descriptor (fd) */
   int fd[2]; // fd[0] is for reading, fd[1] is for writing
   pid_t child_pid;
   pipe(fd); // syscall to add two new file descriptors to be used for the pipeline
-
   if ((child_pid = fork()) < 0){
     perror("fork");
     exit(1);
@@ -119,10 +116,15 @@ int process_command(){
     printf("in child: %d\n", getpid());
     dup2(0, fd[0]); // child closes input side and duplicated input descriptor onto stdin
     close(fd[1]);//close unneeded pipe
+    if (outputfile > 0) {
+      close(STDOUT_FILENO);
+      open(f, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
+      args[outputfile] = NULL;
+    }
     if (execvp( args[0], args) == -1)
       write(STDERR_FILENO, error_message, strlen(error_message));
     //exit(0);
-  } 
+  }
   else { // parent process
     dup2(1, fd[1]); // parent closes output side and duplicated output descriptor onto stdout
     close(fd[0]);//close unneeded pipe
@@ -172,23 +174,16 @@ int execute(){
       strcpy(args[0],"python");
              number_of_args++;
 
-        printf("new arg1 = %s\n", args[0]);
-      printf("new arg2 = %s\n", args[1]);
-      printf("new arg3 = %s\n", args[2]);
-      printf("proccesed command\n");
-       process_command();   
-      /*
-      printf("new arg1 = %s\n", args[0]);
-      printf("new arg2 = %s\n", args[1]);
-      printf("new arg3 = %s\n", args[2]);
-      */
+       process_command(outputfile_name);   
+    
     }
      else
-        return process_command();
+        return process_command(outputfile_name);
     return 1;
 }
 
 int main(int argc, char *argv[]) {
+
   char * buffer = (char *) malloc(byteSize+1);// add one for terminating \n
   while(1){
     printf("mysh> ");
@@ -197,25 +192,37 @@ int main(int argc, char *argv[]) {
     //space for the tokenized string
     char **tokens = malloc(512 * sizeof(char*));
     //if sucessfully ran getline() function tokenize the string
+
+
+
+
     if(result){
       line_to_arguments(buffer, tokens);
-      int i = 0 ;
-
-
-   printf(" arg0 = %s\n", tokens[0]);
-      printf(" arg1 = %s\n", tokens[1]);
-      printf("arg2 = %s\n", tokens[2]);
-      printf("argc= %d\n",number_of_args);
-      
-
+      int i = 0;
+      outputfile = 0;
       while(tokens[i] != NULL){
         args[i] = tokens[i];
         number_of_args++;
+        //check for '>' in the args array
+        if (strcmp(args[i], ">") == 0) { 
+          //check if the argument after '>' is not NULL and one after that is NULL
+          if (tokens[i+2] == NULL && tokens[i+1] != NULL) {
+            outputfile = i;
+            outputfile_name = tokens[i+1];
+          } else {
+            outputfile = -1;
+            write(STDERR_FILENO, error_message, strlen(error_message));
+          }
+        }
+
         printf("I am a token: %s with length: %lu\n", tokens[i], strlen(tokens[i++]));
       }
 
-    if (number_of_args>0) execute();
-
+if (outputfile == 0){
+            if (number_of_args>0) execute();
+      } else if (outputfile > 0) {
+        int pc = process_command(outputfile_name);
+      }
 
 
     }
@@ -223,7 +230,6 @@ int main(int argc, char *argv[]) {
        write(STDERR_FILENO, error_message, strlen(error_message));
     }
 
-    int z=0;
     while(number_of_args!=0){
       free(tokens[number_of_args-1]);
       tokens[number_of_args]=NULL;
@@ -236,7 +242,6 @@ int main(int argc, char *argv[]) {
       printf("arg2 = %s\n", args[2]);
       printf("argc= %d\n",number_of_args);
       */
-    z=0;
   
   }
 
