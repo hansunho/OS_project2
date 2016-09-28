@@ -14,10 +14,13 @@ int outputfile;
 char *outputfile_name;
 size_t byteSize = 512;
 int number_of_args = 0;
+    //space for the tokenized string
+   char **tokens ;
 static char* args[512];
 char error_message[30] = "An error has occurred\n";
 char delimit[]=" \t\r\n\v\f" ;
-
+int background_job = 0;
+int batch_mode = 0; //0 for false 1 for true
 
 void line_to_arguments(char * line, char ** toks ){
 
@@ -27,12 +30,12 @@ void line_to_arguments(char * line, char ** toks ){
     int i = 0;
     //allocate some memory for each token array element
     toks[i] = malloc(512 * sizeof(char));
-    printf("p is %s  tok[i] is %s\n",p,toks[i]);
    
     //flag of whether p has a special character in it or not 0 for no special char, 1 otherwise
     int no_special_char=1;
 
     while(p_copy){
+//    printf("p is %s  tok[i] is %s\n",p,toks[i]);
 
         //loop through the string and store each token separately
       while(strlen(p_copy)!=0 ) {
@@ -85,13 +88,10 @@ void line_to_arguments(char * line, char ** toks ){
       if(no_special_char==1){
         strcat(toks[i++], "");
       }
-                  printf("22222\n");
 
       p = strtok(NULL, delimit);
       p_copy = p;
       if(p){
-            printf("33333\n");
-
         toks[i] = malloc(512 * sizeof(char));
       }
     }
@@ -104,6 +104,8 @@ void line_to_arguments(char * line, char ** toks ){
 }
 
 int process_command(char *f){
+ 
+//printf("background_job1: %d \n",background_job);
   /* setting up pipeline process with file descriptor (fd) */
   int fd[2]; // fd[0] is for reading, fd[1] is for writing
   pid_t child_pid;
@@ -112,10 +114,12 @@ int process_command(char *f){
     perror("fork");
     exit(1);
   } 
-  else if (child_pid == 0) { // child process
-    printf("in child: %d\n", getpid());
+//      printf("pid: %d\n", getpid());
+
+ if (child_pid == 0) { // child process
+  //  printf("in child: %d\n", getpid());
     dup2(0, fd[0]); // child closes input side and duplicated input descriptor onto stdin
-    close(fd[1]);//close unneeded pipe
+  //  close(fd[1]);//close unneeded pipe
     if (outputfile > 0) {
       close(STDOUT_FILENO);
       open(f, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
@@ -123,14 +127,21 @@ int process_command(char *f){
     }
     if (execvp( args[0], args) == -1)
       write(STDERR_FILENO, error_message, strlen(error_message));
-    //exit(0);
   }
   else { // parent process
     dup2(1, fd[1]); // parent closes output side and duplicated output descriptor onto stdout
-    close(fd[0]);//close unneeded pipe
+    //close(fd[0]);//close unneeded pipe
     //nbytes = read(fd[0], readbuffer, sizeof(readbuffer));
-    printf("in parent: %d\n", getpid());
-    int wc = wait(NULL);
+    int status;
+   if(background_job == 0)  status = waitpid(child_pid,&status,WUNTRACED);//only wait if you don't want to run background jobs
+
+   //printf("in parent: %d status = %d\n", getpid(), status);
+
+//   if(background_job == 0){ 
+  //  printf("ga\n");
+  // printf("child wait: %d\n",wait(NULL));//only wait if you don't want to run background jobs
+ // }
+
   }
   close(fd[1]);
   close(fd[0]);
@@ -138,15 +149,25 @@ int process_command(char *f){
 }
 
 int execute(){
+//check if the last argument is '&', set the flag accordingly
+  //and discard the last argument
+  if(strcmp(args[number_of_args-1],"&") == 0) {
+    background_job = 1;
+    free(tokens[number_of_args-1]);
+    tokens[number_of_args - 1] = NULL;
+    args[number_of_args-1] = NULL;
+    number_of_args--;
+  }
+  else background_job = 0;
 
   //check for the first argument's last three characters, used for .py extension
   char * last_three_chars = (args[0]+(strlen(args[0])-3));
-
-    if (strcmp(args[0], "exit") == 0){
+  
+  if (strcmp(args[0], "exit") == 0){
       exit(0) ;
     } 
     else if (strcmp(args[0], "cd") == 0){
-      if (chdir(args[1]) == -1)
+           if (chdir(args[1]) == -1)
         chdir(getenv("HOME"));
     } 
     else if (strcmp(args[0], "pwd") == 0){
@@ -161,21 +182,15 @@ int execute(){
       printf("waiting\n"); //fix this
     }
     else if(strcmp(last_three_chars,".py")==0){
-            printf("new arg1 = %s\n", args[0]);
-      printf("new arg2 = %s\n", args[1]);
-      printf("new arg3 = %s\n", args[2]);
       //we want to add "python" to args[0], so move each array element down one spot
       args[number_of_args+1]=NULL;//element after last token is NULL
       args[number_of_args]=malloc(512*sizeof(char));//we are adding a new element in the array so malloc
       for(int i = number_of_args; i > 0;i--){
-        printf("4\n");
         strcpy(args[i],args[i-1]);
       }
       strcpy(args[0],"python");
-             number_of_args++;
-
-       process_command(outputfile_name);   
-    
+      number_of_args++;
+      process_command(outputfile_name);   
     }
      else
         return process_command(outputfile_name);
@@ -183,21 +198,51 @@ int execute(){
 }
 
 int main(int argc, char *argv[]) {
+  FILE* file;
+  //get line will return the number of chars read or -1 if failed
+  int result = 1;
+  if(argv[1] != NULL){
+   file = fopen(argv[1], "r");//open file read only
+  }
+  if(argv[1] != NULL && file == NULL){
+    write(STDERR_FILENO, error_message, strlen(error_message));
+  }
+  else if(file != NULL)
+    batch_mode=1;//set batch mode token to true
+
+
 
   char * buffer = (char *) malloc(byteSize+1);// add one for terminating \n
-  while(1){
-    printf("mysh> ");
-    //get line will return the number of chars read or -1 if failed
-    int result = getline(&buffer, &byteSize, stdin);
-    //space for the tokenized string
-    char **tokens = malloc(512 * sizeof(char*));
+  while(result != -1){
+    
+    ///get this block so check for result this is for last error in batchmode!!!!!
+    if (batch_mode==1 ) 
+      result = getline(&buffer, &byteSize, file);
+    else if(background_job == 1){
+     result = getline(&buffer, &byteSize, stdin);
+    }
+    else{
+       printf("mysh> ");
+      result = getline(&buffer, &byteSize, stdin);
+    }
+///////////////////////////////////////////////////////////////////////////
+
+
+//printf("result %d \n", result);
+     if(batch_mode==1 && result != -1) {
+      write(STDERR_FILENO, "mysh> ", 6);
+      write(STDERR_FILENO, buffer, strlen(buffer));
+  //    write(STDERR_FILENO, "\n", 1);
+  }
+    //allocate memory for tokens
+      tokens = malloc(512 * sizeof(char*));
     //if sucessfully ran getline() function tokenize the string
-
-
-
-
-    if(result){
+    if(result != -1){
+//       background_job = 0;
       line_to_arguments(buffer, tokens);
+   
+  
+
       int i = 0;
       outputfile = 0;
       while(tokens[i] != NULL){
@@ -214,20 +259,22 @@ int main(int argc, char *argv[]) {
             write(STDERR_FILENO, error_message, strlen(error_message));
           }
         }
+//        printf("I am a token: %s with length: %lu bj= %d\n", tokens[i], strlen(tokens[i]),background_job);
+         i++;
 
-        printf("I am a token: %s with length: %lu\n", tokens[i], strlen(tokens[i++]));
       }
 
-if (outputfile == 0){
-            if (number_of_args>0) execute();
-      } else if (outputfile > 0) {
+      if (outputfile == 0){
+            if (number_of_args>0)
+               execute();
+      }
+      else if (outputfile > 0) {
         int pc = process_command(outputfile_name);
       }
-
-
     }
     else{
-       write(STDERR_FILENO, error_message, strlen(error_message));
+                 // printf("result is %d, buffer is %s\n",result, buffer);
+    if(batch_mode != 1)   write(STDERR_FILENO, error_message, strlen(error_message));
     }
 
     while(number_of_args!=0){
@@ -246,5 +293,6 @@ if (outputfile == 0){
   }
 
   free(buffer);
+
   return 0;
 }
