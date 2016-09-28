@@ -179,7 +179,7 @@ int execute(){
         printf("%s\n", getcwd( buff, 512 - sizeof(args)));
     } 
     else if (strcmp(args[0], "wait") == 0){
-      printf("waiting\n"); //fix this
+      wait(NULL);
     }
     else if(strcmp(last_three_chars,".py")==0){
       //we want to add "python" to args[0], so move each array element down one spot
