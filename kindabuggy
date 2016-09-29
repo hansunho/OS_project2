@@ -105,6 +105,7 @@ void line_to_arguments(char * line, char ** toks ){
 
 int process_command(char *f){
  
+//printf("background_job1: %d \n",background_job);
   /* setting up pipeline process with file descriptor (fd) */
   int fd[2]; // fd[0] is for reading, fd[1] is for writing
   pid_t child_pid;
@@ -116,7 +117,7 @@ int process_command(char *f){
 //      printf("pid: %d\n", getpid());
 
  if (child_pid == 0) { // child process
-    printf("in child: %d\n", getpid());
+  //  printf("in child: %d\n", getpid());
     dup2(0, fd[0]); // child closes input side and duplicated input descriptor onto stdin
   //  close(fd[1]);//close unneeded pipe
     if (outputfile > 0) {
@@ -124,10 +125,8 @@ int process_command(char *f){
       open(f, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
       args[outputfile] = NULL;
     }
-    if (execvp( args[0], args) == -1){
-      printf("kek\n");
+    if (execvp( args[0], args) == -1)
       write(STDERR_FILENO, error_message, strlen(error_message));
-    }
   }
   else { // parent process
     dup2(1, fd[1]); // parent closes output side and duplicated output descriptor onto stdout
@@ -136,7 +135,7 @@ int process_command(char *f){
     int status;
    if(background_job == 0)  status = waitpid(child_pid,&status,WUNTRACED);//only wait if you don't want to run background jobs
 
-   printf("in parent: %d status = %d\n", getpid(), status);
+   //printf("in parent: %d status = %d\n", getpid(), status);
 
 //   if(background_job == 0){ 
   //  printf("ga\n");
@@ -174,10 +173,8 @@ int execute(){
     else if (strcmp(args[0], "pwd") == 0){
       char* cwd;
       char buff[sizeof(args)];
-      if (getcwd( buff, byteSize - sizeof(args) ) == NULL ){
-        printf("shit\n");
+      if (getcwd( buff, byteSize - sizeof(args) ) == NULL )
         write(STDERR_FILENO, error_message, strlen(error_message));
-      }
       else
         printf("%s\n", getcwd( buff, byteSize - sizeof(args)));
     } 
@@ -193,29 +190,12 @@ int execute(){
       }
       strcpy(args[0],"python");
       number_of_args++;
-
       process_command(outputfile_name);   
     }
-     else{
-            printf("wahtsgood\n");
-  printf(" arg0 = %s\n", args[0]);
-      printf(" arg1 = %s\n", args[1]);
-      printf("arg2 = %s\n", args[2]);
-      printf("argc= %d\n",number_of_args);
+     else
         return process_command(outputfile_name);
-     }
     return 1;
 }
-
-
-
-
-
-
-
-
-
-
 
 int main(int argc, char *argv[]) {
   FILE* file;
@@ -230,11 +210,13 @@ int main(int argc, char *argv[]) {
   else if(file != NULL)
     batch_mode=1;//set batch mode token to true
 
+  int lineoverflow = 0;
+  if(result>513) lineoverflow = -1;
 
 
-  char * buffer = (char *) malloc(byteSize);
-  while(result){
-    
+  char * buffer = (char *) malloc(byteSize);// add one for terminating \n
+  while(result != -1){
+ ///get this block so check for result this is for last error in batchmode!!!!!
     if (batch_mode==1 ) 
       result = getline(&buffer, &byteSize, file);
     else if(background_job == 1){
@@ -244,24 +226,25 @@ int main(int argc, char *argv[]) {
        printf("mysh> ");
       result = getline(&buffer, &byteSize, stdin);
     }
+///////////////////////////////////////////////////////////////////////////
+  lineoverflow = 0;
+  if(result>513) lineoverflow = -1;
 
-  if(result > 513) result=-1;
-      
+    if(lineoverflow==0){
+    
+   
 
-    printf("result %d \n", result);
- 
-
+//printf("result %d \n", result);
      if(batch_mode==1 && result != -1) {
       write(STDERR_FILENO, "mysh> ", 6);
       write(STDERR_FILENO, buffer, strlen(buffer));
   //    write(STDERR_FILENO, "\n", 1);
   }
     //allocate memory for tokens
+      tokens = malloc(byteSize * sizeof(char*));
     //if sucessfully ran getline() function tokenize the string
-    if(result != -1 ){
+    if(result != -1){
 //       background_job = 0;
-            tokens = malloc(byteSize * sizeof(char*));
-
       line_to_arguments(buffer, tokens);
    
   
@@ -278,7 +261,6 @@ int main(int argc, char *argv[]) {
             outputfile = i;
             outputfile_name = tokens[i+1];
           } else {
-            printf("imsun\n");
             outputfile = -1;
             write(STDERR_FILENO, error_message, strlen(error_message));
           }
@@ -297,34 +279,28 @@ int main(int argc, char *argv[]) {
       }
     }
     else{
-    //if(batch_mode != 1)
-       write(STDERR_FILENO, error_message, strlen(error_message));
+                 // printf("result is %d, buffer is %s\n",result, buffer);
+    if(batch_mode != 1)   write(STDERR_FILENO, error_message, strlen(error_message));
     }
 
     while(number_of_args!=0){
-    printf(" arg1[%d] = %s\n",number_of_args-1, args[1]);
       free(tokens[number_of_args-1]);
       tokens[number_of_args]=NULL;
       args[number_of_args-1]=NULL;
       number_of_args--;
     }
-   // printf("bitchass\n");
-   // free(tokens);
-
      /*
    printf(" arg0 = %s\n", args[0]);
       printf(" arg1 = %s\n", args[1]);
       printf("arg2 = %s\n", args[2]);
       printf("argc= %d\n",number_of_args);
       */
-  
-  } while(number_of_args!=0){
-    printf(" fsafasfsafarg1[%d] = %s\n",number_of_args-1, args[1]);
-      free(tokens[number_of_args-1]);
-      tokens[number_of_args]=NULL;
-      args[number_of_args-1]=NULL;
-      number_of_args--;
-    } free(buffer);
+  }
+else  write(STDERR_FILENO, error_message, strlen(error_message));
+
+  }
+
+  free(buffer);
 
   return 0;
 }
